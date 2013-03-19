@@ -4,7 +4,7 @@
 * Description:
 *   Plugin show positions of all players through walls to admin when he/she is observing, dead or spectate.
 *
-* Version 1.0
+* Version 1.1
 * Changelog & more info at http://goo.gl/4nKhJ
 */
 
@@ -13,13 +13,11 @@
 
 // ====[ CONSTANTS ]======================================================================
 #define PLUGIN_NAME    "CS:GO Admin ESP"
-#define PLUGIN_VERSION "1.0"
+#define PLUGIN_VERSION "1.1"
 #define TEAM_SPECTATOR 1
 
 // ====[ VARIABLES ]======================================================================
-new	AdmFlag,
-	Handle:AdminESP,
-	Handle:mp_teammates_are_enemies,
+new	Handle:AdminESP, Handle:mp_teammates_are_enemies,
 	bool:IsAllowedToESP[MAXPLAYERS + 1] = {false, ...},
 	bool:IsUsingESP[MAXPLAYERS + 1]     = {false, ...};
 
@@ -30,7 +28,7 @@ public Plugin:myinfo =
 	author      = "Root",
 	description = "ESP/WH for Admins",
 	version     = PLUGIN_VERSION,
-	url         = "forums.alliedmods.net/showthread.php?p=1915130"
+	url         = "forums.alliedmods.net/showthread.php?p=211117"
 };
 
 
@@ -42,21 +40,20 @@ public OnPluginStart()
 {
 	// Create ConVars
 	CreateConVar("sm_csgo_adminesp_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_NOTIFY|FCVAR_PLUGIN|FCVAR_SPONLY);
-	AdminESP = CreateConVar("sm_adminesp", "z", "If flag is specified (a-z), Admin ESP will be avalible only for admins with that flag", FCVAR_PLUGIN, true, 0.0);
+	AdminESP = CreateConVar("sm_csgo_adminesp", "1", "Whether or not automatically enable ESP/WH when Admin with cheat flag (Default: \"n\") dies", FCVAR_PLUGIN, true, 0.0, true, 1.0);
 
 	// Hook ConVar change
 	HookConVarChange(AdminESP, OnConVarChange);
 
-	// What is that? Its a magic!
+	// You want to ask: what is that? Its a magic!
 	mp_teammates_are_enemies = FindConVar("mp_teammates_are_enemies");
 
+	// Mod is not supported?
 	if (mp_teammates_are_enemies == INVALID_HANDLE)
-		SetFailState("Could not find \"mp_teammates_are_enemies\" ConVar! Mod is not supprted => disabling plugin...");
+		SetFailState("Fatal Error: Could not find \"mp_teammates_are_enemies\" ConVar! Disabling plugin...");
 
-	// Hook needed events
-	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Post);
-	HookEvent("player_death", OnPlayerDeath, EventHookMode_Post);
-	HookEvent("player_team",  OnTeamChange,  EventHookMode_Post);
+	// Manually trigger OnConVarChange to hook events
+	OnConVarChange(AdminESP, "0", "1");
 }
 
 /* OnConVarChange()
@@ -65,13 +62,22 @@ public OnPluginStart()
  * --------------------------------------------------------------------------------------- */
 public OnConVarChange(Handle:convar, const String:oldValue[], const String:newValue[])
 {
-	// Loop through all clients
-	for (new i = 1; i <= MaxClients; i++)
+	// Since old/newValue's is strings, convert them to integers
+	switch (StringToInt(newValue))
 	{
-		// Make sure all clients is connected
-		if (IsClientInGame(i))
+		// Unhook all needed events on plugin disabling
+		case false:
 		{
-			OnClientPostAdminCheck(i);
+			UnhookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Post);
+			UnhookEvent("player_death", OnPlayerDeath, EventHookMode_Post);
+			UnhookEvent("player_team",  OnTeamChange,  EventHookMode_Post);
+		}
+
+		case true:
+		{
+			HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Post);
+			HookEvent("player_death", OnPlayerDeath, EventHookMode_Post);
+			HookEvent("player_team",  OnTeamChange,  EventHookMode_Post);
 		}
 	}
 }
@@ -85,15 +91,8 @@ public OnClientPostAdminCheck(client)
 	// Make sure connected client is validated
 	if (IsValidClient(client))
 	{
-		// Get flag name from convar string and retrieve client's access
-		decl String:admflag[AdminFlags_TOTAL];
-		GetConVarString(AdminESP, admflag, sizeof(admflag));
-
-		// Converts a string of flag characters to a bit string
-		AdmFlag = ReadFlagString(admflag);
-
 		// Make sure player is having appropriate access, and give it to him
-		if (AdmFlag != 0 && CheckCommandAccess(client, NULL_STRING, AdmFlag, true))
+		if (CheckCommandAccess(client, "csgo_admin_esp", ADMFLAG_CHEATS))
 		{
 			// Client can use ESP, so enable it now!
 			IsAllowedToESP[client] = true;
@@ -132,7 +131,8 @@ public OnPlayerSpawn(Handle:event, const String:name[], bool:dontBroadcast)
 	new client = GetClientOfUserId(GetEventInt(event, "userid"));
 
 	// If client was used ESP, make sure to disable it now
-	if (IsUsingESP[client] == true)
+	if (IsValidClient(client) == true
+	&& IsAllowedToESP[client] == true)
 	{
 		DisableESP(client);
 	}
