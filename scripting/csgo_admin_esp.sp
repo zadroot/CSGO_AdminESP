@@ -39,7 +39,7 @@ public Plugin:myinfo =
 public OnPluginStart()
 {
 	// Create ConVars
-	CreateConVar("sm_csgo_adminesp_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_NOTIFY|FCVAR_PLUGIN|FCVAR_SPONLY);
+	CreateConVar("sm_csgo_adminesp_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_NOTIFY|FCVAR_DONTRECORD);
 	AdminESP = CreateConVar("sm_csgo_adminesp", "1", "Whether or not automatically enable ESP/WH when Admin with cheat flag (Default: \"n\") dies", FCVAR_PLUGIN, true, 0.0, true, 1.0);
 
 	// Hook ConVar change
@@ -52,7 +52,7 @@ public OnPluginStart()
 	if (mp_teammates_are_enemies == INVALID_HANDLE)
 		SetFailState("Fatal Error: Could not find \"mp_teammates_are_enemies\" ConVar! Disabling plugin...");
 
-	// Manually trigger OnConVarChange to hook events
+	// Manually trigger OnConVarChange to hook plugin's events
 	OnConVarChange(AdminESP, "0", "1");
 }
 
