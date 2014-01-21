@@ -8,16 +8,16 @@
 * Changelog & more info at http://goo.gl/4nKhJ
 */
 
-// ====[ SEMICOLON ]======================================================================
-#pragma semicolon 1
+#undef REQUIRE_EXTENSIONS
+#include <cstrike>
 
 // ====[ CONSTANTS ]======================================================================
 #define PLUGIN_NAME    "CS:GO Admin ESP"
 #define PLUGIN_VERSION "1.1"
-#define TEAM_SPECTATOR 1
 
 // ====[ VARIABLES ]======================================================================
-new	Handle:AdminESP, Handle:mp_teammates_are_enemies,
+new	Handle:AdminESP,
+	Handle:mp_teammates_are_enemies,
 	bool:IsAllowedToESP[MAXPLAYERS + 1] = {false, ...},
 	bool:IsUsingESP[MAXPLAYERS + 1]     = {false, ...};
 
@@ -29,7 +29,7 @@ public Plugin:myinfo =
 	description = "ESP/WH for Admins",
 	version     = PLUGIN_VERSION,
 	url         = "forums.alliedmods.net/showthread.php?p=211117"
-};
+}
 
 
 /* OnPluginStart()
@@ -45,10 +45,10 @@ public OnPluginStart()
 	// Hook ConVar change
 	HookConVarChange(AdminESP, OnConVarChange);
 
-	// You want to ask: what is that? Its a magic!
+	// Magical cvar to enable glows on everyone
 	mp_teammates_are_enemies = FindConVar("mp_teammates_are_enemies");
 
-	// Mod is not supported?
+	// Mod is not supported
 	if (mp_teammates_are_enemies == INVALID_HANDLE)
 		SetFailState("Fatal Error: Could not find \"mp_teammates_are_enemies\" ConVar! Disabling plugin...");
 
@@ -94,7 +94,7 @@ public OnClientPostAdminCheck(client)
 		// Make sure player is having appropriate access, and give it to him
 		if (CheckCommandAccess(client, "csgo_admin_esp", ADMFLAG_CHEATS))
 		{
-			// Client can use ESP, so enable it now!
+			// Client can use ESP - so enable it now!
 			IsAllowedToESP[client] = true;
 			EnableESP(client);
 		}
@@ -165,7 +165,7 @@ public OnTeamChange(Handle:event, const String:name[], bool:dontBroadcast)
 	// Same here, but also check if player changed team to spectator
 	if (IsValidClient(client) == true
 	&& IsAllowedToESP[client] == true
-	&& GetEventInt(event, "team") <= TEAM_SPECTATOR)
+	&& GetEventInt(event, "team") <= CS_TEAM_SPECTATOR)
 	{
 		EnableESP(client);
 	}
@@ -197,4 +197,4 @@ DisableESP(client)
  *
  * Checks if a client is valid.
  * --------------------------------------------------------------------------------------- */
-bool:IsValidClient(client) return (client > 0 && client <= MaxClients && IsClientInGame(client) && !IsFakeClient(client)) ? true : false;
+bool:IsValidClient(client) return (1 <= client <= MaxClients && IsClientInGame(client) && !IsFakeClient(client)) ? true : false;
