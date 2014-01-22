@@ -8,12 +8,10 @@
 * Changelog & more info at http://goo.gl/4nKhJ
 */
 
-#undef REQUIRE_EXTENSIONS
-#include <cstrike>
-
 // ====[ CONSTANTS ]======================================================================
 #define PLUGIN_NAME    "CS:GO Admin ESP"
 #define PLUGIN_VERSION "1.1"
+#define TEAM_SPECTATOR 1
 
 // ====[ VARIABLES ]======================================================================
 new	Handle:AdminESP,
@@ -38,19 +36,19 @@ public Plugin:myinfo =
  * --------------------------------------------------------------------------------------- */
 public OnPluginStart()
 {
-	// Create ConVars
+	// Magical cvar to enable glows on everyone
+	mp_teammates_are_enemies = FindConVar("mp_teammates_are_enemies");
+
+	// Log error and disable plugin if mod is not supported
+	if (mp_teammates_are_enemies == INVALID_HANDLE)
+		SetFailState("Fatal Error: Could not find \"mp_teammates_are_enemies\" ConVar! Disabling plugin...");
+
+	// Create plugin console variables on success
 	CreateConVar("sm_csgo_adminesp_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_NOTIFY|FCVAR_DONTRECORD);
 	AdminESP = CreateConVar("sm_csgo_adminesp", "1", "Whether or not automatically enable ESP/WH when Admin with cheat flag (Default: \"n\") dies", FCVAR_PLUGIN, true, 0.0, true, 1.0);
 
 	// Hook ConVar change
 	HookConVarChange(AdminESP, OnConVarChange);
-
-	// Magical cvar to enable glows on everyone
-	mp_teammates_are_enemies = FindConVar("mp_teammates_are_enemies");
-
-	// Mod is not supported
-	if (mp_teammates_are_enemies == INVALID_HANDLE)
-		SetFailState("Fatal Error: Could not find \"mp_teammates_are_enemies\" ConVar! Disabling plugin...");
 
 	// Manually trigger OnConVarChange to hook plugin's events
 	OnConVarChange(AdminESP, "0", "1");
@@ -72,7 +70,6 @@ public OnConVarChange(Handle:convar, const String:oldValue[], const String:newVa
 			UnhookEvent("player_death", OnPlayerDeath, EventHookMode_Post);
 			UnhookEvent("player_team",  OnTeamChange,  EventHookMode_Post);
 		}
-
 		case true:
 		{
 			HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Post);
@@ -100,7 +97,7 @@ public OnClientPostAdminCheck(client)
 		}
 		else
 		{
-			// Otherwise disable it (why? because ConVarValue was changed!)
+			// Otherwise disable it
 			IsAllowedToESP[client] = false;
 			DisableESP(client);
 		}
@@ -165,7 +162,7 @@ public OnTeamChange(Handle:event, const String:name[], bool:dontBroadcast)
 	// Same here, but also check if player changed team to spectator
 	if (IsValidClient(client) == true
 	&& IsAllowedToESP[client] == true
-	&& GetEventInt(event, "team") <= CS_TEAM_SPECTATOR)
+	&& GetEventInt(event, "team") <= TEAM_SPECTATOR)
 	{
 		EnableESP(client);
 	}
@@ -197,4 +194,7 @@ DisableESP(client)
  *
  * Checks if a client is valid.
  * --------------------------------------------------------------------------------------- */
-bool:IsValidClient(client) return (1 <= client <= MaxClients && IsClientInGame(client) && !IsFakeClient(client)) ? true : false;
+bool:IsValidClient(client)
+{
+	return (1 <= client <= MaxClients && IsClientInGame(client) && !IsFakeClient(client)) ? true : false;
+}
