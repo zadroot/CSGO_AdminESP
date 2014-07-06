@@ -4,20 +4,31 @@
 * Description:
 *   Plugin show positions of all players through walls to admin when he/she is observing, dead or spectate.
 *
-* Version 1.1
+* Version 2.0
 * Changelog & more info at http://goo.gl/4nKhJ
 */
 
+// ====[ INCLUDES ]=======================================================================
+#undef REQUIRE_EXTENSIONS
+#include <cstrike> // constants
+#include <sdkhooks> // transmit hook
+#undef REQUIRE_PLUGIN
+#tryinclude <CustomPlayerSkins> // required plugin
+
 // ====[ CONSTANTS ]======================================================================
 #define PLUGIN_NAME    "CS:GO Admin ESP"
-#define PLUGIN_VERSION "1.1"
-#define TEAM_SPECTATOR 1
+#define PLUGIN_VERSION "2.0"
 
 // ====[ VARIABLES ]======================================================================
 new	Handle:AdminESP,
+#if defined _CustomPlayerSkins_included
+	Handle:AdminESP_Mode,
+	Handle:AdminESP_Dead,
+	Handle:AdminESP_TColor,
+	Handle:AdminESP_CTColor,
+#endif
 	Handle:mp_teammates_are_enemies,
-	bool:IsAllowedToESP[MAXPLAYERS + 1] = {false, ...},
-	bool:IsUsingESP[MAXPLAYERS + 1]     = {false, ...};
+	bool:IsUsingESP[MAXPLAYERS + 1];
 
 // ====[ PLUGIN ]=========================================================================
 public Plugin:myinfo =
@@ -41,17 +52,25 @@ public OnPluginStart()
 
 	// Log error and disable plugin if mod is not supported
 	if (mp_teammates_are_enemies == INVALID_HANDLE)
-		SetFailState("Fatal Error: Could not find \"mp_teammates_are_enemies\" ConVar! Disabling plugin...");
+		SetFailState("Fatal Error: Could not find \"mp_teammates_are_enemies\" console variable! Disabling plugin...");
 
 	// Create plugin console variables on success
 	CreateConVar("sm_csgo_adminesp_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_NOTIFY|FCVAR_DONTRECORD);
-	AdminESP = CreateConVar("sm_csgo_adminesp", "1", "Whether or not automatically enable ESP/WH when Admin with cheat flag (Default: \"n\") dies", FCVAR_PLUGIN, true, 0.0, true, 1.0);
-
+	AdminESP         = CreateConVar("sm_csgo_adminesp",         "1",              "Whether or not automatically enable ESP/WH when Admin with cheat flag (Default: \"n\") observe", FCVAR_PLUGIN, true, 0.0, true, 1.0);
+#if defined _CustomPlayerSkins_included
+	AdminESP_Mode    = CreateConVar("sm_csgo_adminesp_mode",    "0",              "Determines mode for Admin ESP:\n0 = Red glow\n1 = Colored glow (cpu intensive)",                 FCVAR_PLUGIN, true, 0.0, true, 1.0);
+	AdminESP_Dead    = CreateConVar("sm_csgo_adminesp_dead",    "1",              "If colored glow mode is set, detemines whether or not enable glow only when Admin is observing", FCVAR_PLUGIN, true, 0.0, true, 1.0);
+	AdminESP_TColor  = CreateConVar("sm_csgo_adminesp_tcolor",  "192 160 96 128", "Determines R G B A glow colors for Terrorists team\nSet to \"0 0 0 0\" to disable",              FCVAR_PLUGIN);
+	AdminESP_CTColor = CreateConVar("sm_csgo_adminesp_ctcolor", "96 128 192 128", "Determines R G B A glow colors for Counter-Terrorists team\nSet to \"0 0 0 0\" to disable",      FCVAR_PLUGIN);
+#endif
 	// Hook ConVar change
 	HookConVarChange(AdminESP, OnConVarChange);
 
 	// Manually trigger OnConVarChange to hook plugin's events
 	OnConVarChange(AdminESP, "0", "1");
+
+	// Generate plugin config in cfg/sourcemod folder
+	AutoExecConfig(true, "csgo_admin_esp");
 }
 
 /* OnConVarChange()
@@ -66,108 +85,141 @@ public OnConVarChange(Handle:convar, const String:oldValue[], const String:newVa
 		// Unhook all needed events on plugin disabling
 		case false:
 		{
-			UnhookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Post);
-			UnhookEvent("player_death", OnPlayerDeath, EventHookMode_Post);
-			UnhookEvent("player_team",  OnTeamChange,  EventHookMode_Post);
+			UnhookEvent("player_spawn", OnPlayerEvents, EventHookMode_Post);
+			UnhookEvent("player_death", OnPlayerEvents, EventHookMode_Post);
+			UnhookEvent("player_team",  OnPlayerEvents, EventHookMode_Post);
 		}
 		case true:
 		{
-			HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Post);
-			HookEvent("player_death", OnPlayerDeath, EventHookMode_Post);
-			HookEvent("player_team",  OnTeamChange,  EventHookMode_Post);
+			HookEvent("player_spawn", OnPlayerEvents, EventHookMode_Post);
+			HookEvent("player_death", OnPlayerEvents, EventHookMode_Post);
+			HookEvent("player_team",  OnPlayerEvents, EventHookMode_Post);
 		}
 	}
 }
 
-/* OnClientPostAdminCheck()
+/* OnPlayerEvents()
  *
- * When a client is in game and fully authorized.
+ * Called when player spawns, dies or changes team.
  * --------------------------------------------------------------------------------------- */
-public OnClientPostAdminCheck(client)
+public OnPlayerEvents(Handle:event, const String:name[], bool:dontBroadcast)
 {
-	// Make sure connected client is validated
+	// Retrieve client ids from event
+	new clientID = GetEventInt(event, "userid");
+	new client   = GetClientOfUserId(clientID);
+
 	if (IsValidClient(client))
 	{
-		// Make sure player is having appropriate access, and give it to him
-		if (CheckCommandAccess(client, "csgo_admin_esp", ADMFLAG_CHEATS))
+		// When the player spawns
+		if (name[7] == 's')
 		{
-			// Client can use ESP - so enable it now!
-			IsAllowedToESP[client] = true;
-			EnableESP(client);
+#if defined _CustomPlayerSkins_included
+			if (GetConVarBool(AdminESP_Mode))
+			{
+				// Attach custom player model and enable glow after 0.1 delay on spawning
+				CreateTimer(0.1, Timer_SetupGlow, clientID, TIMER_FLAG_NO_MAPCHANGE);
+
+				// When admin spawns, check whether or not disable 'dead ESP'
+				if (!GetConVarBool(AdminESP_Dead))
+				{
+					return;
+				}
+			}
+#endif
+			if (IsUsingESP[client])
+			{
+				// Disable previous WH state
+				DisableESP(client);
+			}
 		}
+
+		// Enable ESP when player dies or changes own team
 		else
 		{
-			// Otherwise disable it
-			IsAllowedToESP[client] = false;
-			DisableESP(client);
+			EnableESP(client);
 		}
 	}
 }
-
-/* OnClientDisconnect()
+#if defined _CustomPlayerSkins_included
+/* Timer_SetupGlow()
  *
- * When a client disconnects from the server.
+ * Sets player skin and enables glow.
  * --------------------------------------------------------------------------------------- */
-public OnClientDisconnect(client)
+public Action:Timer_SetupGlow(Handle:timer, any:client)
 {
-	// Since bots also can disconnect - make sure disconnected clients is not bots!
-	if (IsValidClient(client))
+	// Validate client on delayed callback
+	if ((client = GetClientOfUserId(client)))
 	{
-		DisableESP(client);
-		IsAllowedToESP[client] = false;
+		decl String:model[PLATFORM_MAX_PATH];
+
+		// Retrieve current player model
+		GetClientModel(client, model, sizeof(model));
+
+		// Assign custom player skin same as current player model
+		CPS_SetSkin(client, model);
+
+		// Retrieve skin entity from core plugin
+		new skin = CPS_GetSkin(client);
+
+		// Declare convar strings to properly colorize players
+		decl String:TColors[32],  String:expT[4][sizeof(TColors)],
+			 String:CTColors[32], String:expCT[4][sizeof(CTColors)];
+
+		// Get values from plugin convars
+		GetConVarString(AdminESP_TColor,  TColors,  sizeof(TColors));
+		GetConVarString(AdminESP_CTColor, CTColors, sizeof(CTColors));
+
+		// Get rid of spaces to get all RGBA values
+		ExplodeString(TColors,  " ", expT,  sizeof(expT),  sizeof(expT[]));
+		ExplodeString(CTColors, " ", expCT, sizeof(expCT), sizeof(expCT[]));
+
+		switch (GetClientTeam(client))
+		{
+			// Set T colors for Terrorists team and CT for Counter-Terrorists
+			case CS_TEAM_T:  SetupGlow(skin, StringToInt(expT[0]),  StringToInt(expT[1]),  StringToInt(expT[2]),  StringToInt(expT[3]));
+			case CS_TEAM_CT: SetupGlow(skin, StringToInt(expCT[0]), StringToInt(expCT[1]), StringToInt(expCT[2]), StringToInt(expCT[3]));
+		}
+
+		// Hook SetTransmit for custom player model entity
+		SDKHookEx(skin, SDKHook_SetTransmit, OnSetTransmit);
 	}
 }
 
-/* OnPlayerSpawn()
+/* OnSetTransmit()
  *
- * Called after a player spawns.
+ * Transmit hook for custom player skins.
  * --------------------------------------------------------------------------------------- */
-public OnPlayerSpawn(Handle:event, const String:name[], bool:dontBroadcast)
+public Action:OnSetTransmit(entity, client)
 {
-	// Get client index from event
-	new client = GetClientOfUserId(GetEventInt(event, "userid"));
-
-	// If client was used ESP, make sure to disable it now
-	if (IsValidClient(client) == true
-	&& IsAllowedToESP[client] == true)
-	{
-		DisableESP(client);
-	}
+	// If player is not having access to ESP, dont show custom player skins, which is glows
+	return !IsUsingESP[client] ? Plugin_Handled : Plugin_Continue;
 }
 
-/* OnPlayerDeath()
+/* SetupGlow()
  *
- * Called after a player dies.
+ * Sets glow for player assigned skins depends on their team and a color settings.
  * --------------------------------------------------------------------------------------- */
-public OnPlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
+SetupGlow(entity, r, g, b, a)
 {
-	new client = GetClientOfUserId(GetEventInt(event, "userid"));
+	static offset;
 
-	// Make sure client is valid in all cases
-	if (IsValidClient(client) == true
-	&& IsAllowedToESP[client] == true)
+	// Get sendprop offset for given entity
+	if (!offset && (offset = GetEntSendPropOffs(entity, "m_clrGlow")) == -1)
 	{
-		EnableESP(client);
+		LogError("Unable to find offset: \"m_clrGlow\"!");
+		return;
 	}
+
+	// Enable normal glow for custom player skin
+	SetEntProp(entity, Prop_Send, "m_bShouldGlow", true, true);
+
+	// And then setup glow color by offset
+	SetEntData(entity, offset, r, _, true);    // Red color
+	SetEntData(entity, offset + 1, g, _, true) // Green
+	SetEntData(entity, offset + 2, b, _, true) // Blue
+	SetEntData(entity, offset + 3, a, _, true) // It's alpha
 }
-
-/* OnTeamChange()
- *
- * Called after a player changes his team.
- * --------------------------------------------------------------------------------------- */
-public OnTeamChange(Handle:event, const String:name[], bool:dontBroadcast)
-{
-	new client = GetClientOfUserId(GetEventInt(event, "userid"));
-
-	// Same here, but also check if player changed team to spectator
-	if (IsValidClient(client) == true
-	&& IsAllowedToESP[client] == true
-	&& GetEventInt(event, "team") <= TEAM_SPECTATOR)
-	{
-		EnableESP(client);
-	}
-}
-
+#endif
 /* EnableESP()
  *
  * Enables ESP for specified client.
@@ -175,8 +227,13 @@ public OnTeamChange(Handle:event, const String:name[], bool:dontBroadcast)
 EnableESP(client)
 {
 	// Magic stuff
-	IsUsingESP[client] = true;
-	SendConVarValue(client, mp_teammates_are_enemies, "1");
+	if ((IsUsingESP[client] = CheckCommandAccess(client, "csgo_admin_esp", ADMFLAG_CHEATS)))
+	{
+#if defined _CustomPlayerSkins_included
+		if (!GetConVarBool(AdminESP_Mode))
+#endif
+			SendConVarValue(client, mp_teammates_are_enemies, "1");
+	}
 }
 
 /* DisableESP()
@@ -187,7 +244,10 @@ DisableESP(client)
 {
 	// Client is no longer used ESP
 	IsUsingESP[client] = false;
-	SendConVarValue(client, mp_teammates_are_enemies, "0");
+#if defined _CustomPlayerSkins_included
+	if (!GetConVarBool(AdminESP_Mode))
+#endif
+		SendConVarValue(client, mp_teammates_are_enemies, "0");
 }
 
 /* IsValidClient()
