@@ -52,7 +52,9 @@ public OnPluginStart()
 
 	// Log error and disable plugin if mod is not supported
 	if (mp_teammates_are_enemies == INVALID_HANDLE)
+	{
 		SetFailState("Fatal Error: Could not find \"mp_teammates_are_enemies\" console variable! Disabling plugin...");
+	}
 
 	// Create plugin console variables on success
 	CreateConVar("sm_csgo_adminesp_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_NOTIFY|FCVAR_DONTRECORD);
@@ -133,8 +135,7 @@ public OnPlayerEvents(Handle:event, const String:name[], bool:dontBroadcast)
 			}
 		}
 
-		// Enable ESP when player dies or changes own team
-		else
+		else // Enable ESP when player dies or changes own team
 		{
 			EnableESP(client);
 		}
@@ -161,27 +162,28 @@ public Action:Timer_SetupGlow(Handle:timer, any:client)
 		// Retrieve skin entity from core plugin
 		new skin = CPS_GetSkin(client);
 
-		// Declare convar strings to properly colorize players
-		decl String:TColors[32],  String:expT[4][sizeof(TColors)],
-			 String:CTColors[32], String:expCT[4][sizeof(CTColors)];
-
-		// Get values from plugin convars
-		GetConVarString(AdminESP_TColor,  TColors,  sizeof(TColors));
-		GetConVarString(AdminESP_CTColor, CTColors, sizeof(CTColors));
-
-		// Get rid of spaces to get all RGBA values
-		ExplodeString(TColors,  " ", expT,  sizeof(expT),  sizeof(expT[]));
-		ExplodeString(CTColors, " ", expCT, sizeof(expCT), sizeof(expCT[]));
-
-		switch (GetClientTeam(client))
+		// Validate skin entity by SDKHookEx native return
+		if (SDKHookEx(skin, SDKHook_SetTransmit, OnSetTransmit))
 		{
-			// Set T colors for Terrorists team and CT for Counter-Terrorists
-			case CS_TEAM_T:  SetupGlow(skin, StringToInt(expT[0]),  StringToInt(expT[1]),  StringToInt(expT[2]),  StringToInt(expT[3]));
-			case CS_TEAM_CT: SetupGlow(skin, StringToInt(expCT[0]), StringToInt(expCT[1]), StringToInt(expCT[2]), StringToInt(expCT[3]));
-		}
+			// Declare convar strings to properly colorize players
+			decl String:TColors[32],  String:expT[4][sizeof(TColors)],
+				 String:CTColors[32], String:expCT[4][sizeof(CTColors)];
 
-		// Hook SetTransmit for custom player model entity
-		SDKHookEx(skin, SDKHook_SetTransmit, OnSetTransmit);
+			// Get values from plugin convars
+			GetConVarString(AdminESP_TColor,  TColors,  sizeof(TColors));
+			GetConVarString(AdminESP_CTColor, CTColors, sizeof(CTColors));
+
+			// Get rid of spaces to get all RGBA values
+			ExplodeString(TColors,  " ", expT,  sizeof(expT),  sizeof(expT[]));
+			ExplodeString(CTColors, " ", expCT, sizeof(expCT), sizeof(expCT[]));
+
+			switch (GetClientTeam(client))
+			{
+				// Set T colors for Terrorists team and CT for Counter-Terrorists
+				case CS_TEAM_T:  SetupGlow(skin, StringToInt(expT[0]),  StringToInt(expT[1]),  StringToInt(expT[2]),  StringToInt(expT[3]));
+				case CS_TEAM_CT: SetupGlow(skin, StringToInt(expCT[0]), StringToInt(expCT[1]), StringToInt(expCT[2]), StringToInt(expCT[3]));
+			}
+		}
 	}
 }
 
@@ -191,7 +193,16 @@ public Action:Timer_SetupGlow(Handle:timer, any:client)
  * --------------------------------------------------------------------------------------- */
 public Action:OnSetTransmit(entity, client)
 {
-	// If player is not having access to ESP, dont show custom player skins, which is glows
+	// Get the observed target
+	new target = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
+
+	// If we are observing someone, dont show its glow
+	if (IsValidClient(target) && entity == CPS_GetSkin(target))
+	{
+		return Plugin_Handled;
+	}
+
+	// Dont show glow skins if player dont have access to ESP and dont show skin of observed target
 	return !IsUsingESP[client] ? Plugin_Handled : Plugin_Continue;
 }
 
@@ -226,7 +237,6 @@ SetupGlow(entity, r, g, b, a)
  * --------------------------------------------------------------------------------------- */
 EnableESP(client)
 {
-	// Magic stuff
 	if ((IsUsingESP[client] = CheckCommandAccess(client, "csgo_admin_esp", ADMFLAG_CHEATS)))
 	{
 #if defined _CustomPlayerSkins_included
@@ -242,7 +252,7 @@ EnableESP(client)
  * --------------------------------------------------------------------------------------- */
 DisableESP(client)
 {
-	// Client is no longer used ESP
+	// Disable ESP for a player and send old value if needed
 	IsUsingESP[client] = false;
 #if defined _CustomPlayerSkins_included
 	if (!GetConVarBool(AdminESP_Mode))
