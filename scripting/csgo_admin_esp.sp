@@ -112,7 +112,7 @@ public OnPlayerEvents(Handle:event, const String:name[], bool:dontBroadcast)
 
 	if (IsValidClient(client))
 	{
-		// When the player spawns
+		// Called when the player spawns
 		if (name[7] == 's')
 		{
 #if defined _CustomPlayerSkins_included
@@ -121,7 +121,7 @@ public OnPlayerEvents(Handle:event, const String:name[], bool:dontBroadcast)
 				// Attach custom player model and enable glow after 0.1 delay on spawning
 				CreateTimer(0.1, Timer_SetupGlow, clientID, TIMER_FLAG_NO_MAPCHANGE);
 
-				// When admin spawns, check whether or not disable 'dead ESP'
+				// Check whether or not disable when Admin spawns 'dead ESP'
 				if (!GetConVarBool(AdminESP_Dead))
 				{
 					return;
@@ -135,7 +135,8 @@ public OnPlayerEvents(Handle:event, const String:name[], bool:dontBroadcast)
 			}
 		}
 
-		else // Enable ESP when player dies or changes own team
+		// Enable ESP when player dies or changes own team
+		else
 		{
 			EnableESP(client);
 		}
@@ -159,29 +160,38 @@ public Action:Timer_SetupGlow(Handle:timer, any:client)
 		// Assign custom player skin same as current player model
 		CPS_SetSkin(client, model);
 
+		// When Custom Player Skin is set, it hides default player model, but we wont
+		SetEntityRenderMode(client, RENDER_NORMAL);
+
 		// Retrieve skin entity from core plugin
 		new skin = CPS_GetSkin(client);
 
 		// Validate skin entity by SDKHookEx native return
 		if (SDKHookEx(skin, SDKHook_SetTransmit, OnSetTransmit))
 		{
-			// Declare convar strings to properly colorize players
-			decl String:TColors[32],  String:expT[4][sizeof(TColors)],
-				 String:CTColors[32], String:expCT[4][sizeof(CTColors)];
-
-			// Get values from plugin convars
-			GetConVarString(AdminESP_TColor,  TColors,  sizeof(TColors));
-			GetConVarString(AdminESP_CTColor, CTColors, sizeof(CTColors));
-
-			// Get rid of spaces to get all RGBA values
-			ExplodeString(TColors,  " ", expT,  sizeof(expT),  sizeof(expT[]));
-			ExplodeString(CTColors, " ", expCT, sizeof(expCT), sizeof(expCT[]));
-
 			switch (GetClientTeam(client))
 			{
-				// Set T colors for Terrorists team and CT for Counter-Terrorists
-				case CS_TEAM_T:  SetupGlow(skin, StringToInt(expT[0]),  StringToInt(expT[1]),  StringToInt(expT[2]),  StringToInt(expT[3]));
-				case CS_TEAM_CT: SetupGlow(skin, StringToInt(expCT[0]), StringToInt(expCT[1]), StringToInt(expCT[2]), StringToInt(expCT[3]));
+				case CS_TEAM_T:
+				{
+					// Declare convar strings to properly colorize players
+					decl String:TColors[32], String:expT[4][sizeof(TColors)];
+					GetConVarString(AdminESP_TColor, TColors, sizeof(TColors));
+
+					// Get rid of spaces to get all RGBA values
+					ExplodeString(TColors, " ", expT, sizeof(expT), sizeof(expT[]));
+					SetupGlow(skin, StringToInt(expT[0]), StringToInt(expT[1]), StringToInt(expT[2]), StringToInt(expT[3]));
+				}
+				case CS_TEAM_CT:
+				{
+					decl String:CTColors[32], String:expCT[4][sizeof(CTColors)];
+
+					// Get values from plugin convars
+					GetConVarString(AdminESP_CTColor, CTColors, sizeof(CTColors));
+					ExplodeString(CTColors, " ", expCT, sizeof(expCT), sizeof(expCT[]));
+
+					// Setup player glow on prop_physics_override entity, aka custom player skin
+					SetupGlow(skin, StringToInt(expCT[0]), StringToInt(expCT[1]), StringToInt(expCT[2]), StringToInt(expCT[3]));
+				}
 			}
 		}
 	}
@@ -225,10 +235,10 @@ SetupGlow(entity, r, g, b, a)
 	SetEntProp(entity, Prop_Send, "m_bShouldGlow", true, true);
 
 	// And then setup glow color by offset
-	SetEntData(entity, offset, r, _, true);    // Red color
+	SetEntData(entity, offset, r, _, true);    // Red
 	SetEntData(entity, offset + 1, g, _, true) // Green
 	SetEntData(entity, offset + 2, b, _, true) // Blue
-	SetEntData(entity, offset + 3, a, _, true) // It's alpha
+	SetEntData(entity, offset + 3, a, _, true) // And it's alpha
 }
 #endif
 /* EnableESP()
