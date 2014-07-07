@@ -10,10 +10,10 @@
 
 // ====[ INCLUDES ]=======================================================================
 #undef REQUIRE_EXTENSIONS
-#include <cstrike> // constants
-#include <sdkhooks> // transmit hook
+#include <cstrike> // included for constatnts
+#include <sdkhooks> // optional transmit hook for colored glow
 #undef REQUIRE_PLUGIN
-#tryinclude <CustomPlayerSkins> // required plugin
+#tryinclude <CustomPlayerSkins> // core plugin to attach glow
 
 // ====[ CONSTANTS ]======================================================================
 #define PLUGIN_NAME    "CS:GO Admin ESP"
@@ -206,8 +206,8 @@ public Action:OnSetTransmit(entity, client)
 	// Get the observed target
 	new target = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
 
-	// If we are observing someone, dont show its glow
-	if (IsValidClient(target) && entity == CPS_GetSkin(target))
+	// We have to hide custom player model of target, otherwise we will see his model
+	if (IsValidClient(target) && entity == EntRefToEntIndex(CPS_GetSkin(target)))
 	{
 		return Plugin_Handled;
 	}
