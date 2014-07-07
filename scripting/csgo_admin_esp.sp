@@ -11,9 +11,9 @@
 // ====[ INCLUDES ]=======================================================================
 #undef REQUIRE_EXTENSIONS
 #include <cstrike> // included for constatnts
-#include <sdkhooks> // optional transmit hook for colored glow
+#include <sdkhooks> // optional transmit hook for skins
 #undef REQUIRE_PLUGIN
-#tryinclude <CustomPlayerSkins> // core plugin to attach glow
+#tryinclude <CustomPlayerSkins> // attaches custom skin for glow
 
 // ====[ CONSTANTS ]======================================================================
 #define PLUGIN_NAME    "CS:GO Admin ESP"
@@ -84,14 +84,13 @@ public OnConVarChange(Handle:convar, const String:oldValue[], const String:newVa
 	// Since old/newValue's is strings, convert them to integers
 	switch (StringToInt(newValue))
 	{
-		// Unhook all needed events on plugin disabling
 		case false:
 		{
 			UnhookEvent("player_spawn", OnPlayerEvents, EventHookMode_Post);
 			UnhookEvent("player_death", OnPlayerEvents, EventHookMode_Post);
 			UnhookEvent("player_team",  OnPlayerEvents, EventHookMode_Post);
 		}
-		case true:
+		case true: // Hook events on manual convar change
 		{
 			HookEvent("player_spawn", OnPlayerEvents, EventHookMode_Post);
 			HookEvent("player_death", OnPlayerEvents, EventHookMode_Post);
@@ -130,13 +129,11 @@ public OnPlayerEvents(Handle:event, const String:name[], bool:dontBroadcast)
 #endif
 			if (IsUsingESP[client])
 			{
-				// Disable previous WH state
+				// Reset state
 				DisableESP(client);
 			}
 		}
-
-		// Enable ESP when player dies or changes own team
-		else
+		else // Enable ESP when player dies or changes team
 		{
 			EnableESP(client);
 		}
@@ -169,29 +166,21 @@ public Action:Timer_SetupGlow(Handle:timer, any:client)
 		// Validate skin entity by SDKHookEx native return
 		if (SDKHookEx(skin, SDKHook_SetTransmit, OnSetTransmit))
 		{
+			// Declare convar strings to properly colorize players
+			decl String:color[16], String:pieces[4][sizeof(color)];
+
+			// Get values from plugin convars
 			switch (GetClientTeam(client))
 			{
-				case CS_TEAM_T:
-				{
-					// Declare convar strings to properly colorize players
-					decl String:TColors[32], String:expT[4][sizeof(TColors)];
-					GetConVarString(AdminESP_TColor, TColors, sizeof(TColors));
+				case CS_TEAM_T:  GetConVarString(AdminESP_TColor,  color, sizeof(color));
+				case CS_TEAM_CT: GetConVarString(AdminESP_CTColor, color, sizeof(color));
+			}
 
-					// Get rid of spaces to get all RGBA values
-					ExplodeString(TColors, " ", expT, sizeof(expT), sizeof(expT[]));
-					SetupGlow(skin, StringToInt(expT[0]), StringToInt(expT[1]), StringToInt(expT[2]), StringToInt(expT[3]));
-				}
-				case CS_TEAM_CT:
-				{
-					decl String:CTColors[32], String:expCT[4][sizeof(CTColors)];
-
-					// Get values from plugin convars
-					GetConVarString(AdminESP_CTColor, CTColors, sizeof(CTColors));
-					ExplodeString(CTColors, " ", expCT, sizeof(expCT), sizeof(expCT[]));
-
-					// Setup player glow on prop_physics_override entity, aka custom player skin
-					SetupGlow(skin, StringToInt(expCT[0]), StringToInt(expCT[1]), StringToInt(expCT[2]), StringToInt(expCT[3]));
-				}
+			// Get rid of spaces to get all the RGBA values
+			if (ExplodeString(color, " ", pieces, sizeof(pieces), sizeof(pieces[])) == 4)
+			{
+				// Enable glow on prop_physics_override entity, aka custom player skin
+				SetupGlow(skin, StringToInt(pieces[0]), StringToInt(pieces[1]), StringToInt(pieces[2]), StringToInt(pieces[3]));
 			}
 		}
 	}
@@ -206,13 +195,13 @@ public Action:OnSetTransmit(entity, client)
 	// Get the observed target
 	new target = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
 
-	// We have to hide custom player model of target, otherwise we will see his model
+	// For obvious reasons we have to disable transmit for target's skin
 	if (IsValidClient(target) && entity == EntRefToEntIndex(CPS_GetSkin(target)))
 	{
 		return Plugin_Handled;
 	}
 
-	// Dont show glow skins if player dont have access to ESP and dont show skin of observed target
+	// Dont show glow skins if player dont have access to ESP
 	return !IsUsingESP[client] ? Plugin_Handled : Plugin_Continue;
 }
 
@@ -231,10 +220,10 @@ SetupGlow(entity, r, g, b, a)
 		return;
 	}
 
-	// Enable normal glow for custom player skin
+	// Enable normal glow for skin
 	SetEntProp(entity, Prop_Send, "m_bShouldGlow", true, true);
 
-	// And then setup glow color by offset
+	// Assign given glow colors
 	SetEntData(entity, offset, r, _, true);    // Red
 	SetEntData(entity, offset + 1, g, _, true) // Green
 	SetEntData(entity, offset + 2, b, _, true) // Blue
@@ -247,6 +236,7 @@ SetupGlow(entity, r, g, b, a)
  * --------------------------------------------------------------------------------------- */
 EnableESP(client)
 {
+	//
 	if ((IsUsingESP[client] = CheckCommandAccess(client, "csgo_admin_esp", ADMFLAG_CHEATS)))
 	{
 #if defined _CustomPlayerSkins_included
